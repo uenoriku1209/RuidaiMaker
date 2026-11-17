@@ -1,0 +1,42 @@
+appId: com.ruidai.maker
+productName: 類題メーカー
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+  # 図の描画エンジン (WebAssembly 版 TeX と、そのデータファイル)
+  - node_modules/node-tikzjax/**
+win:
+  executableName: RuidaiMaker
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  artifactName: RuidaiMaker-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+  maintainer: ruidai
+  category: Education
+appImage:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false
+publish: null
