@@ -2090,3 +2090,107 @@ select.input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------------- フォルダの削除ボタン ---------------- */
+
+.folder-card {
+  position: relative;
+  cursor: pointer;
+}
+.folder-card > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-delete {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--danger);
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+  flex: none;
+}
+.folder-card:hover .card-delete {
+  opacity: 1;
+}
+.card-delete:hover {
+  background: rgba(229, 99, 107, 0.12);
+}
+
+.check.compact {
+  height: auto;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.check.compact input {
+  margin-top: 1px;
+  flex: none;
+}
+
+/* ---------------- 図のブラッシュアップ・編集 ---------------- */
+
+.figure-stage {
+  position: relative;
+}
+.figure-busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #128e89;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(1px);
+}
+.figure-tools {
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 14px;
+  background: var(--card-2);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.chip:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.chip.on {
+  background: var(--grad);
+  color: #fff;
+}
+.figure-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--card-2);
+}
+.figure-panel p {
+  margin: 0;
+}
+.figure-panel .select {
+  max-width: 260px;
+}

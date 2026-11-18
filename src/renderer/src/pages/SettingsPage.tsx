@@ -224,6 +224,39 @@ export function SettingsPage({
       </section>
 
       <section className="settings-section card padded">
+        <h2>図の設定</h2>
+        <div className="field-row">
+          <div className="field">
+            <label>電気回路図の記号</label>
+            <div className="segmented">
+              {(
+                [
+                  ['jis', 'JIS（抵抗は長方形）'],
+                  ['us', '米国式（抵抗はジグザグ）']
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  className={(settings.circuitStyle ?? 'jis') === id ? 'active' : ''}
+                  onClick={() =>
+                    update(
+                      { circuitStyle: id },
+                      '回路記号の設定を変更しました（これから描く図に反映されます）'
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <p className="muted small-text">
+          作成済みの図は、図の「コードを編集」→「描き直して保存」またはブラッシュアップで描き直すと反映されます。
+        </p>
+      </section>
+
+      <section className="settings-section card padded">
         <h2>ライブラリの保存先</h2>
         <div className="key-row">
           <div className="static-value grow" title={settings.libraryRoot}>

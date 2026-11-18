@@ -4,12 +4,15 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { wrapBareMath } from '../../../shared/latexFix'
+import { repairLatex } from '../../../shared/latexFix'
+import { KATEX_UNIT_MACROS } from '../../../shared/units'
 
 const KATEX_OPTIONS = {
   throwOnError: false,
   strict: false,
   macros: {
+    // 単位 (\SI{4}{\ohm} など siunitx 風の書き方)
+    ...KATEX_UNIT_MACROS,
     '\\R': '\\mathbb{R}',
     '\\N': '\\mathbb{N}',
     '\\Z': '\\mathbb{Z}',
@@ -28,7 +31,7 @@ export function latexToMarkdown(src: string): string {
     math.push(s)
     return `\uE000${math.length - 1}\uE000`
   }
-  let s = wrapBareMath(src.replace(/\r\n/g, '\n'))
+  let s = repairLatex(src.replace(/\r\n/g, '\n'))
 
   // --- 数式を保護 ---
   s = s.replace(

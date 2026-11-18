@@ -24,6 +24,10 @@ const api: Api = {
   readFigure: (dir, index) => call('library:readFigure', dir, index),
   listReferences: (dir) => call('library:references', dir),
   openPath: (path) => call('shell:openPath', path),
+  brushupFigure: (dir, index, instruction, modelKey, requestId) =>
+    call('figure:brushup', dir, index, instruction, modelKey, requestId),
+  updateFigure: (dir, index, code) => call('figure:update', dir, index, code),
+  undoFigure: (dir, index) => call('figure:undo', dir, index),
   reveal: (path) => call('shell:reveal', path),
   openTex: (dir, which) => call('shell:openTex', dir, which),
 

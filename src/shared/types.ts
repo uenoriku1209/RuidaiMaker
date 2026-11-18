@@ -28,8 +28,12 @@ export interface ProviderStatus {
   error?: string
 }
 
+/** 回路記号のスタイル: JIS (抵抗は長方形) / 米国式 (抵抗はジグザグ) */
+export type CircuitStyle = 'jis' | 'us'
+
 export interface AppSettings {
   libraryRoot: string
+  circuitStyle: CircuitStyle
   generateModel: string
   chatModel: string
   promptTemplate: string
@@ -72,6 +76,8 @@ export interface GenerateRequest {
   notes: string
   /** 図を入れるか: 自動 / なるべく入れる / 入れない */
   figureMode: FigureMode
+  /** 描画した図を AI に見せて1回改善させるか */
+  figureReview: boolean
   attachments: Attachment[]
 }
 
@@ -81,6 +87,8 @@ export interface ProblemItem {
   figure?: string
   /** 図をコンパイルできなかった場合のエラー */
   figureError?: string
+  /** ブラッシュアップ・編集前の図のコード (元に戻す用、新しい順ではなく古い順) */
+  figureHistory?: string[]
   /** 正解に至る過程。画面には出さず、チャットでの説明に使う */
   solution: string
   /** 最終的な答えのみ (途中式なし) */

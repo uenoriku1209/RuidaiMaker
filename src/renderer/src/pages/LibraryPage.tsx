@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Trash2,
   Sparkles,
   FolderPlus,
   FolderSearch,
@@ -45,6 +46,7 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
   const [job, setJob] = useState<Job | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [stage, setStage] = useState('')
+  const [stageAt, setStageAt] = useState(0)
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
   const hasModels = settings.providers.some((p) => p.models.length > 0)
 
@@ -92,10 +94,16 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
     const j: Job = { id: newId(), req, startedAt: Date.now() }
     setJob(j)
     setStage('問題を作成中…')
-    const off = window.api.onGenerateProgress((id, text) => id === j.id && setStage(text))
+    setStageAt(Date.now())
+    const off = window.api.onGenerateProgress((id, text) => {
+      if (id !== j.id) return
+      setStage(text)
+      setStageAt(Date.now())
+    })
     try {
-      const path = await window.api.generate(req, j.id)
-      toast('success', '問題セットを作成しました')
+      const { path, warning } = await window.api.generate(req, j.id)
+      if (warning) toast('error', warning)
+      else toast('success', '問題セットを作成しました')
       refresh()
       setDir(parentDir(path))
       setOpenSet(path)
@@ -105,6 +113,40 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
     } finally {
       off()
       setJob(null)
+    }
+  }
+
+  /** フォルダをごみ箱へ移動 (中の問題セットごと) */
+  const deleteFolder = async (target: string): Promise<void> => {
+    if (target === root) return
+    let detail = ''
+    try {
+      const l = await window.api.listFolder(target)
+      const parts = [
+        l.sets.length && `問題セット ${l.sets.length} 件`,
+        l.folders.length && `フォルダ ${l.folders.length} 件`
+      ].filter(Boolean)
+      if (parts.length) detail = `\n中にある ${parts.join('・')} も一緒に移動します。`
+    } catch {
+      /* noop */
+    }
+    if (
+      !confirm(
+        `フォルダ「${basename(target)}」をごみ箱に移動しますか？${detail}\n（ごみ箱から元に戻せます）`
+      )
+    )
+      return
+    try {
+      await window.api.trash(target)
+      toast('success', `「${basename(target)}」をごみ箱に移動しました`)
+      // 開いていたフォルダが削除されたら、ひとつ上へ
+      if (dir === target || isInside(dir, target)) {
+        setDir(parentDir(target))
+        setOpenSet(null)
+      }
+      refresh()
+    } catch (e) {
+      toast('error', errorMessage(e))
     }
   }
 
@@ -173,9 +215,11 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
           <Loader2 size={18} className="spin" />
           <span>
             「{job.req.field}
-            {job.req.topic ? `／${job.req.topic}` : ''}」{job.req.count} 問 — {stage} {elapsed} 秒
+            {job.req.topic ? `／${job.req.topic}` : ''}」{job.req.count} 問 — {stage}（この段階{' '}
+            {Math.max(0, Math.floor((job.startedAt + elapsed * 1000 - stageAt) / 1000))} 秒／全体{' '}
+            {elapsed} 秒）
             <span className="muted">
-              （AI が解いて検算するため、1〜3分ほどかかることがあります）
+              （AI が解いて検算するため、10問あたり1〜3分ほどかかります）
             </span>
           </span>
           <button className="btn small" onClick={() => window.api.cancel(job.id)}>
@@ -194,6 +238,7 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
           {openSet ? (
             <SetView
               path={openSet}
+              settings={settings}
               onBack={() => setOpenSet(null)}
               onDeleted={() => {
                 setOpenSet(null)
@@ -223,6 +268,15 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
                 >
                   <FolderSearch size={14} />
                 </button>
+                {dir !== root && (
+                  <button
+                    className="btn-icon small danger"
+                    onClick={() => deleteFolder(dir)}
+                    title="このフォルダを削除（ごみ箱へ）"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
 
               {newFolder !== null && (
@@ -250,10 +304,25 @@ export function LibraryPage({ settings, onOpenSettings }: Props): React.JSX.Elem
 
               <div className="set-grid">
                 {listing.folders.map((f) => (
-                  <button key={f.path} className="folder-card" onClick={() => selectDir(f.path)}>
+                  <div
+                    key={f.path}
+                    className="folder-card"
+                    onClick={() => selectDir(f.path)}
+                    role="button"
+                  >
                     <Folder size={20} />
                     <span>{f.name}</span>
-                  </button>
+                    <button
+                      className="card-delete"
+                      title="このフォルダを削除（ごみ箱へ）"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteFolder(f.path)
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 ))}
                 {listing.sets.map((s) => (
                   <button key={s.path} className="set-card" onClick={() => setOpenSet(s.path)}>

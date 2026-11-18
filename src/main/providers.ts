@@ -9,12 +9,23 @@ function baseUrl(p: Provider): string | undefined {
   return process.env[`RUIDAI_BASE_${p.toUpperCase()}`] || undefined
 }
 
+/** AI への1回の依頼にかけてよい時間 (10問分を考えて書く時間を見込む) */
+const REQUEST_TIMEOUT_MS = 6 * 60 * 1000
+
 function gemini(apiKey: string): GoogleGenAI {
   const b = baseUrl('gemini')
-  return new GoogleGenAI({ apiKey, ...(b ? { httpOptions: { baseUrl: b } } : {}) })
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: { timeout: REQUEST_TIMEOUT_MS, ...(b ? { baseUrl: b } : {}) }
+  })
 }
 function openai(apiKey: string): OpenAI {
-  return new OpenAI({ apiKey, baseURL: baseUrl('openai'), maxRetries: 1, timeout: 10 * 60 * 1000 })
+  return new OpenAI({
+    apiKey,
+    baseURL: baseUrl('openai'),
+    maxRetries: 1,
+    timeout: REQUEST_TIMEOUT_MS
+  })
 }
 function anthropic(apiKey: string): Anthropic {
   return new Anthropic({
@@ -87,6 +98,14 @@ export function friendlyError(e: unknown, provider: Provider): Error {
   const status = err?.status
   const msg = err?.message ?? String(e)
   if (err?.name === 'AbortError' || /aborted/i.test(msg)) return new Error('中止しました')
+  if (
+    /timed? ?out|timeout|ETIMEDOUT|deadline/i.test(msg) ||
+    err?.name === 'APIConnectionTimeoutError'
+  ) {
+    return new Error(
+      `AI の応答が ${REQUEST_TIMEOUT_MS / 60000} 分以内に返りませんでした。問題数を減らすか、速いモデル（Flash 系など）を選んで再試行してください`
+    )
+  }
   if (isTemporaryError(e)) {
     return new Error(
       `${PROVIDER_NAME[provider]} のサーバーが混み合っているか、一時的に停止しています（${status ?? '5xx'}）。` +
@@ -317,7 +336,8 @@ async function structuredOnce(
         },
         { signal }
       )
-    const res = await request(Math.min(16000, model.maxTokens ?? 16000))
+    // 10問分の解法と図を書けるだけの長さ (ストリーミングなしで使える上限 約21000 以内)
+    const res = await request(Math.min(20000, model.maxTokens ?? 20000))
     const block = res.content.find((c) => c.type === 'tool_use')
     if (!block || block.type !== 'tool_use')
       throw new Error('AI の出力に問題が含まれていませんでした')
@@ -349,21 +369,22 @@ export async function generateText(
   model: ModelInfo,
   apiKey: string,
   prompt: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  files: Attachment[] = []
 ): Promise<string> {
   try {
     return await withRetry(async () => {
       if (model.provider === 'gemini') {
         const res = await gemini(apiKey).models.generateContent({
           model: model.id,
-          contents: prompt,
+          contents: geminiContents(prompt, files),
           config: { abortSignal: signal }
         })
         return res.text ?? ''
       }
       if (model.provider === 'openai') {
         const res = await openai(apiKey).responses.create(
-          { model: model.id, input: prompt },
+          { model: model.id, input: openaiInput(prompt, files) },
           { signal }
         )
         return res.output_text
@@ -372,7 +393,7 @@ export async function generateText(
         {
           model: model.id,
           max_tokens: Math.min(8000, model.maxTokens ?? 8000),
-          messages: [{ role: 'user', content: prompt }]
+          messages: [{ role: 'user', content: anthropicContent(prompt, files) }]
         },
         { signal }
       )

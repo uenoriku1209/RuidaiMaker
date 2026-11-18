@@ -17,6 +17,7 @@ const file = (): string => join(app.getPath('userData'), 'settings.json')
 function defaults(): Stored {
   return {
     libraryRoot: join(app.getPath('documents'), '類題ライブラリ'),
+    circuitStyle: 'jis',
     generateModel: '',
     chatModel: '',
     promptTemplate: DEFAULT_TEMPLATE,
@@ -145,6 +146,7 @@ export async function settingsView(): Promise<SettingsView> {
   )
   return {
     libraryRoot: s.libraryRoot,
+    circuitStyle: s.circuitStyle ?? 'jis',
     generateModel: s.generateModel,
     chatModel: s.chatModel,
     promptTemplate: s.promptTemplate,

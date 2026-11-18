@@ -2,6 +2,8 @@ import { promises as fs, existsSync } from 'fs'
 import { join, basename, relative, isAbsolute } from 'path'
 import { problemsTex, answersTex } from './latex'
 import type {
+  CircuitStyle,
+  ProblemItem,
   Attachment,
   ChatMessage,
   FolderListing,
@@ -9,7 +11,7 @@ import type {
   ReferenceFile,
   SetEntry
 } from '../shared/types'
-import { wrapBareMath } from '../shared/latexFix'
+import { repairLatex, repairJsonEscapes } from '../shared/latexFix'
 
 export const SET_FILE = 'set.json'
 export const PROBLEMS_TEX = '問題.tex'
@@ -48,23 +50,38 @@ export async function readSet(dir: string): Promise<ProblemSet> {
  * 問題セットを読み込み、$...$ で囲まれていない数式があれば補って保存し直す
  * (以前に作った問題セットの .tex もコンパイルできるようにするため)
  */
-export async function readSetRepaired(dir: string): Promise<ProblemSet> {
+export async function readSetRepaired(
+  dir: string,
+  style: CircuitStyle = 'jis'
+): Promise<{ set: ProblemSet; redrawFigures: number[] }> {
   const set = await readSet(dir)
   let changed = false
-  const problems = set.problems.map((p) => {
-    const fixed = {
-      problem: wrapBareMath(p.problem),
-      solution: wrapBareMath(p.solution),
-      answer: wrapBareMath(p.answer)
+  const redrawFigures: number[] = []
+  const problems = set.problems.map((p, i) => {
+    // 図などのほかの項目はそのまま残す
+    const fixed: ProblemItem = {
+      ...p,
+      problem: repairLatex(p.problem),
+      solution: repairLatex(p.solution),
+      answer: repairLatex(p.answer)
     }
-    if (fixed.problem !== p.problem || fixed.solution !== p.solution || fixed.answer !== p.answer)
+    if (p.figure) {
+      fixed.figure = repairJsonEscapes(p.figure)
+      if (fixed.figure !== p.figure) redrawFigures.push(i)
+    }
+    if (
+      fixed.problem !== p.problem ||
+      fixed.solution !== p.solution ||
+      fixed.answer !== p.answer ||
+      fixed.figure !== p.figure
+    )
       changed = true
     return fixed
   })
-  if (!changed) return set
+  if (!changed) return { set, redrawFigures }
   const repaired = { ...set, problems }
-  await writeSetFiles(dir, repaired)
-  return repaired
+  await writeSetFiles(dir, repaired, style)
+  return { set: repaired, redrawFigures }
 }
 
 function toEntry(dir: string, s: ProblemSet): SetEntry {
@@ -112,6 +129,7 @@ export interface SetExtras {
   /** 問題番号 (0始まり) → SVG */
   figures?: Map<number, string>
   attachments?: Attachment[]
+  circuitStyle?: CircuitStyle
 }
 
 export async function saveSet(
@@ -142,14 +160,18 @@ export async function saveSet(
     }
     set = { ...set, request: { ...set.request, references: names } }
   }
-  await writeSetFiles(target, set)
+  await writeSetFiles(target, set, extras.circuitStyle)
   return target
 }
 
-export async function writeSetFiles(target: string, set: ProblemSet): Promise<void> {
+export async function writeSetFiles(
+  target: string,
+  set: ProblemSet,
+  style: CircuitStyle = 'jis'
+): Promise<void> {
   await fs.writeFile(join(target, SET_FILE), JSON.stringify(set, null, 2), 'utf8')
-  await fs.writeFile(join(target, PROBLEMS_TEX), problemsTex(set), 'utf8')
-  await fs.writeFile(join(target, ANSWERS_TEX), answersTex(set), 'utf8')
+  await fs.writeFile(join(target, PROBLEMS_TEX), problemsTex(set, style), 'utf8')
+  await fs.writeFile(join(target, ANSWERS_TEX), answersTex(set, style), 'utf8')
 }
 
 /* ---------- チャット用 ---------- */
@@ -212,6 +234,11 @@ export async function buildFolderContext(
     used++
   }
   return { text: parts.join('\n\n---\n\n'), setCount: used }
+}
+
+/** 図 (SVG) を保存する */
+export async function writeFigure(dir: string, index: number, svg: string): Promise<void> {
+  await fs.writeFile(join(dir, figureFile(index)), svg, 'utf8')
 }
 
 /** 保存済みの図 (SVG) を読む。無ければ null */

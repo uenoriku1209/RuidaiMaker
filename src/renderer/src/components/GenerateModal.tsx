@@ -50,6 +50,7 @@ export function GenerateModal({ dir, settings, onClose, onSubmit }: Props): Reac
   const [notes, setNotes] = useState(memo.notes ?? '')
   const [model, setModel] = useState(settings.generateModel)
   const [figureMode, setFigureMode] = useState<FigureMode>(memo.figureMode ?? 'auto')
+  const [figureReview, setFigureReview] = useState(memo.figureReview ?? true)
   const [files, setFiles] = useState<PendingAttachment[]>([])
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
@@ -107,12 +108,22 @@ export function GenerateModal({ dir, settings, onClose, onSubmit }: Props): Reac
       reference,
       notes,
       figureMode,
+      figureReview: figureMode !== 'none' && figureReview,
       attachments: files.map(({ name, mime, data }) => ({ name, mime, data }))
     }
     try {
       localStorage.setItem(
         MEMO_KEY,
-        JSON.stringify({ field, topic, expertise, difficulty, count, notes, figureMode })
+        JSON.stringify({
+          field,
+          topic,
+          expertise,
+          difficulty,
+          count,
+          notes,
+          figureMode,
+          figureReview
+        })
       )
     } catch {
       /* noop */
@@ -190,12 +201,19 @@ export function GenerateModal({ dir, settings, onClose, onSubmit }: Props): Reac
                 className="input"
                 type="number"
                 min={1}
-                max={10}
+                max={50}
                 value={count}
-                onChange={(e) => setCount(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                onChange={(e) => setCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
               />
             </div>
           </div>
+          {count > 10 && (
+            <small className="muted small-text">
+              {count} 問は {Math.ceil(count / 10)}{' '}
+              回に分けて作成し、1つの問題セットにまとめます（重複しないよう前の問題を AI
+              に伝えます）。時間がかかります。
+            </small>
+          )}
 
           <div className="field">
             <label>元になる問題（任意・類題を作りたいとき）</label>
@@ -284,6 +302,18 @@ export function GenerateModal({ dir, settings, onClose, onSubmit }: Props): Reac
                 </button>
               ))}
             </div>
+            {figureMode !== 'none' && (
+              <label className="check compact">
+                <input
+                  type="checkbox"
+                  checked={figureReview}
+                  onChange={(e) => setFigureReview(e.target.checked)}
+                />
+                描いた図を AI
+                に見せて自動でブラッシュアップする（重なり・配置・ラベルを点検。図1枚につき AI
+                への依頼が1回増えます）
+              </label>
+            )}
           </div>
 
           <div className="field">

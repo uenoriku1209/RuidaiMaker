@@ -1,5 +1,5 @@
 import type { FigureMode, GenerateRequest, ProblemItem } from '../shared/types'
-import { wrapBareMath } from '../shared/latexFix'
+import { repairLatex, repairJsonEscapes } from '../shared/latexFix'
 import { normalizeFigure } from './figures'
 
 export const DIFFICULTY_LABELS = ['', '基礎', 'やや易', '標準', 'やや難', '難関']
@@ -35,21 +35,35 @@ export const LEGACY_TEMPLATES = [
 const OUTPUT_RULES = `# 出力形式（厳守）
 - 各問題について、まず solution に問題を最後まで解いた過程を書き、検算して答えを確定させてから、その最終的な答えだけを answer に書く。
 - answer には途中式・説明・理由を一切含めず、最終的な答え（値・式・結論）だけを LaTeX で書く。小問がある場合は (1) ... (2) ... のように答えだけを並べる。
+- JSON の文字列の中では、LaTeX のバックスラッシュを必ず二重にする（例: "\\\\theta", "\\\\frac", "\\\\begin"）。一重にすると \\t や \\b が制御文字に化けて数式が壊れる。
 - problem / solution / answer はいずれも LaTeX の本文のみ（\\documentclass や \\begin{document} は書かない）。
 - 数式・記号・変数は 1 文字であっても必ず $...$（独立した式は \\[ ... \\]）で囲む。answer が数式だけの場合も $...$ で囲む。
   良い例: $\\sqrt{2}\\left(\\cos\\frac{\\pi}{4} + i\\sin\\frac{\\pi}{4}\\right)$
   悪い例: \\sqrt{2}\\left(\\cos\\frac{\\pi}{4} + i\\sin\\frac{\\pi}{4}\\right)
+- 単位は $4\\,\\Omega$, $2\\,\\mathrm{A}$, $5\\,\\mathrm{k\\Omega}$, $10\\,\\mu\\mathrm{F}$, $9.8\\,\\mathrm{m/s^2}$ のように、数値と単位の間に \\, を入れ、単位は \\mathrm{} で立体にする。
 - 使ってよい環境は enumerate / itemize / aligned / cases / pmatrix / bmatrix / vmatrix のみ。align や equation は使わず \\[ \\begin{aligned} ... \\end{aligned} \\] を使う。
 - title には問題セット全体を表す短い日本語のタイトル（20文字以内）を書く。`
 
+/** 図の書き方と品質の基準 (問題作成・ブラッシュアップの両方で使う) */
+export const FIGURE_GUIDE = `## 書き方
+- \\begin{tikzpicture} ... \\end{tikzpicture} または \\begin{circuitikz} ... \\end{circuitikz} の環境だけを書く（\\documentclass・\\usepackage・\\begin{document} は書かない）。
+- 使えるもの: TikZ（ライブラリ arrows.meta, calc, angles, quotes, positioning, decorations.markings, patterns）、circuitikz、pgfplots、amsmath。それ以外のパッケージは使わない。
+- 電気回路図は circuitikz、ベクトル図・幾何・力の図は TikZ、関数のグラフは pgfplots の axis 環境で描く。
+- 回路記号の種類（JIS / 米国式）はアプリ側で設定するので、R, L, C, battery1, V, I, lamp, switch など汎用の名前を使い、american / european のオプションは書かない。
+- 図の中の文字は英数字と数式だけにし、日本語は使わない。単位は $4\\,\\Omega$, $12\\,\\mathrm{V}$, $10\\,\\mu\\mathrm{F}$ のように書く（Ω や μ の文字は使わない）。
+
+## 品質の基準
+- 座標は整数か 0.5 刻みで設計し、部品・点・矢印の間隔を十分に（2 単位以上）とる。全体は横 6〜10cm 程度。
+- ラベル・数値・記号どうし、またラベルと線・部品が重ならないようにする。混み合う場合は配置を広げるか、ラベルの位置（circuitikz の l= と l_=、a=、TikZ の above / below / left / right など）を変える。
+- 電気回路: 回路は閉じた配線にし、配線は水平・垂直のみで交差させない。分岐点は to[short, -*] などで黒丸を付ける。電流の矢印 i>^= や電圧 v= は問題文で使う記号と一致させる。
+- ベクトル・力の図: 矢印の向きと長さを値に比例させ、作用点を明確にする。必要なら座標軸・原点 O・成分の補助線（dashed / dotted）を入れる。角度は angles / quotes の pic で示す。
+- グラフ: axis lines=middle、軸ラベル、必要な目盛りを付け、交点・極値など問題で扱う点には点とラベルを付ける。
+- 線は基本を黒、強調したいものだけ thick や blue / red を使う。矢印は -{Stealth} を使う。
+- 問題文に出てくる記号・値と図のラベルを完全に一致させ、答え（求める値）は図に書き込まない。`
+
 const FIGURE_RULES = `# 図（figure）のルール
 - figure には問題文に添える図の TikZ コードを書く。図が不要な問題では figure を空文字列にする。
-- \\begin{tikzpicture} ... \\end{tikzpicture} または \\begin{circuitikz} ... \\end{circuitikz} の環境だけを書く（\\documentclass・\\usepackage・\\begin{document} は書かない）。
-- 使えるもの: TikZ（ライブラリ arrows.meta, calc, angles, quotes, positioning, decorations.markings, patterns）、circuitikz（電気回路図）、pgfplots（グラフ）、amsmath。それ以外のパッケージは使わない。
-- 電気回路図は circuitikz、ベクトル図・幾何・力の図は TikZ、関数のグラフは pgfplots の axis 環境で描く。
-- 図の中の文字は英数字と数式（$R_1$, $\\vec{F}$, $\\theta$ など）だけにし、日本語は使わない。
-- 図は問題文と矛盾しないようにし、問題文で図の記号（$R_1$ など）を参照する。答えそのものを図に書き込まない。
-- 大きさは横 8cm 程度までに収める。`
+${FIGURE_GUIDE}`
 
 const FIGURE_MODE_TEXT: Record<FigureMode, string> = {
   auto: '- 回路・ベクトル・幾何・グラフなど、図があると問題が明確になる場合だけ図を作成する。',
@@ -57,7 +71,31 @@ const FIGURE_MODE_TEXT: Record<FigureMode, string> = {
   none: '- 図は作成しない。figure はすべて空文字列にする。図がなくても解ける問題にする。'
 }
 
-export function buildPrompt(template: string, r: GenerateRequest): string {
+/** 分割作成 (11問以上) のときの追加指示 */
+export interface BatchInfo {
+  index: number
+  total: number
+  from: number
+  to: number
+  totalCount: number
+  /** すでに作成した問題 (重複を避けるため) */
+  previous: string[]
+}
+
+function batchText(b?: BatchInfo): string {
+  if (!b || b.total <= 1) return ''
+  const prev = b.previous.length
+    ? `\n以下はすでに作成した問題の冒頭です。これらと内容・設定・数値が重複しない、別の問題を作成する（難易度と分野はそろえる）。\n${b.previous.map((p, i) => `- ${i + 1}: ${p}`).join('\n')}`
+    : ''
+  return `\n# 分割作成\n全 ${b.totalCount} 問を ${b.total} 回に分けて作成しています。今回は ${b.from}〜${b.to} 問目（${b.to - b.from + 1} 問）を作成する。${prev}\n`
+}
+
+/** 重複チェック用に、問題文の冒頭を短く取り出す */
+export function problemDigest(problem: string): string {
+  return problem.replace(/\s+/g, ' ').slice(0, 90)
+}
+
+export function buildPrompt(template: string, r: GenerateRequest, batch?: BatchInfo): string {
   const level = Math.max(1, Math.min(5, Math.round(r.difficulty)))
   const reference = r.reference.trim()
     ? `\n# 元になる問題（この問題の類題を作成する。数値や設定を変え、同じ考え方で解ける問題にする）\n${r.reference.trim()}\n`
@@ -79,7 +117,7 @@ export function buildPrompt(template: string, r: GenerateRequest): string {
     r.figureMode === 'none'
       ? `# 図（figure）のルール\n${FIGURE_MODE_TEXT.none}`
       : `${FIGURE_RULES}\n${FIGURE_MODE_TEXT[r.figureMode ?? 'auto']}`
-  return `${filled.trim()}\n${attachments}\n${OUTPUT_RULES}\n\n${figure}`
+  return `${filled.trim()}\n${attachments}${batchText(batch)}\n${OUTPUT_RULES}\n\n${figure}`
 }
 
 /** 出力の JSON スキーマ。solution → answer の順で書かせる */
@@ -141,10 +179,10 @@ export function parseResult(raw: unknown): GenerateResult {
     throw new Error('AI の出力に問題が含まれていませんでした。もう一度お試しください')
   }
   const problems = d.problems.map((p: Record<string, unknown>) => ({
-    problem: wrapBareMath(String(p?.problem ?? '').trim()),
-    figure: normalizeFigure(String(p?.figure ?? '')),
-    solution: wrapBareMath(String(p?.solution ?? '').trim()),
-    answer: wrapBareMath(String(p?.answer ?? '').trim())
+    problem: repairLatex(String(p?.problem ?? '').trim()),
+    figure: normalizeFigure(repairJsonEscapes(String(p?.figure ?? ''))),
+    solution: repairLatex(String(p?.solution ?? '').trim()),
+    answer: repairLatex(String(p?.answer ?? '').trim())
   }))
   if (problems.some((p) => !p.problem || !p.answer)) {
     throw new Error('問題文または解答が空のものがありました。もう一度お試しください')

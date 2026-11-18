@@ -81,3 +81,80 @@ export function wrapBareMath(src: string): string {
   s = s.replace(RUN, wrapRun)
   return s.replace(/(\d+)/g, (_, i: string) => kept[Number(i)])
 }
+
+/* ---------------- JSON のエスケープで壊れた LaTeX の修復 ---------------- */
+
+/**
+ * AI が JSON の文字列でバックスラッシュを二重にし忘れると、
+ * \b \f \n \r \t で始まる命令 (\begin, \frac, \neq, \rho, \theta, \times など) が
+ * バックスペース・タブ・改行などの制御文字に化けてしまう。それを元の命令に戻す。
+ */
+const N_COMMANDS = [
+  'eq',
+  'eg',
+  'abla',
+  'u',
+  'i',
+  'ot',
+  'otin',
+  'e',
+  'leq',
+  'geq',
+  'less',
+  'gtr',
+  'parallel',
+  'mid',
+  'subseteq',
+  'supseteq',
+  'subset',
+  'supset',
+  'sim',
+  'cong',
+  'exists',
+  'vdash',
+  'atural',
+  'earrow',
+  'warrow',
+  'leftarrow',
+  'rightarrow',
+  'Leftarrow',
+  'Rightarrow',
+  'leftrightarrow',
+  'ormalsize',
+  'onumber',
+  'ewline'
+].sort((a, b) => b.length - a.length)
+const N_COMMAND_RE = new RegExp(`\\n(${N_COMMANDS.join('|')})(?![A-Za-z])`, 'g')
+
+export function repairJsonEscapes(src: string): string {
+  if (!src) return src
+  let s = src
+    .replaceAll(String.fromCharCode(8), '\\b') // \begin, \beta, \bar, \boldsymbol ...
+    .replaceAll(String.fromCharCode(12), '\\f') // \frac, \forall ...
+    .replace(/\t(?=[A-Za-z])/g, '\\t') // \theta, \times, \text, \to, \tan ...
+    .replace(/\r(?=[A-Za-z])/g, '\\r') // \rho, \right, \rangle ...
+  // \n は本物の改行と区別できないので、数式の中の既知の命令 (\neq, \nu, \nabla ...) だけ戻す
+  const fixN = (seg: string): string => seg.replace(N_COMMAND_RE, '\\n$1')
+  s = s
+    .replace(/\$\$[\s\S]+?\$\$/g, fixN)
+    .replace(/\\\[[\s\S]+?\\\]/g, fixN)
+    .replace(/(?<!\\)\$(?:\\\$|[^$])+?(?<!\\)\$/g, fixN)
+  return s
+}
+
+/**
+ * 対応する \end のない \begin{...} (例: 1.2\begin{\%}, 400\begin{W}) は、
+ * 単位を書こうとして崩れたものとみなし、\,\mathrm{...} に置き換える。
+ */
+export function fixOrphanBegin(src: string): string {
+  return src.replace(/\\begin\{([^{}]*)\}/g, (m, name: string) => {
+    const n = name.trim()
+    if (/^[a-zA-Z]+\*?$/.test(n) && src.includes(`\\end{${n}}`)) return m
+    return `\\,\\mathrm{${n}}`
+  })
+}
+
+/** AI の出力した LaTeX をまとめて修復する (制御文字 → 命令、壊れた \begin、囲み忘れの数式) */
+export function repairLatex(src: string): string {
+  return wrapBareMath(fixOrphanBegin(repairJsonEscapes(src)))
+}
